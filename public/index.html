@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spparo Voice Agent: Lead Qualification Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fdf6ee;
+    --bg-panel: #ffffff;
+    --accent: #e8541e;
+    --accent-dark: #c8420f;
+    --text: #1c1917;
+    --muted: #78716c;
+    --border: #ece3d8;
+    --chat-bg: #0f172a;
+    --chat-bubble-lead: #1e293b;
+    --chat-bubble-agent: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #fffaf4 0%, var(--bg) 100%);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 60px;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .brand-logo {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+  }
+  h1 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .layout {
+    width: 100%;
+    max-width: 920px;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 20px;
+  }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(28, 25, 23, 0.04);
+  }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .dot.live { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  button {
+    flex: 1;
+    padding: 13px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: #f5efe6;
+    color: var(--text);
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  button.primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+  }
+  button.primary:hover:not(:disabled) { background: var(--accent-dark); }
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  /* Transcript styled like the WhatsApp-chat mockup on spparo.com */
+  #transcript {
+    height: 280px;
+    overflow-y: auto;
+    background: var(--chat-bg);
+    border-radius: 14px;
+    padding: 14px;
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+  .line { margin-bottom: 10px; display: flex; }
+  .line .bubble {
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 12px;
+    max-width: 85%;
+  }
+  .line.agent { justify-content: flex-end; }
+  .line.agent .bubble { background: var(--chat-bubble-agent); color: #04140a; }
+  .line.lead { justify-content: flex-start; }
+  .line.lead .bubble { background: var(--chat-bubble-lead); color: #e6edf3; }
+  .line .who {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    opacity: 0.7;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .line.partial .bubble { opacity: 0.55; font-style: italic; }
+  h3 {
+    margin: 0 0 12px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+  }
+  .field {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    gap: 12px;
+  }
+  .field .label { color: var(--muted); }
+  .field .value { font-weight: 600; text-align: right; }
+  .value.pending { color: var(--muted); font-weight: 400; }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-top: 12px;
+  }
+  .badge.hot { background: #dcfce7; color: #15803d; }
+  .badge.pending { background: #fef3c7; color: #92400e; }
+  footer {
+    margin-top: 28px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="logo.png" alt="Spparo" class="brand-logo" />
+      <h1>Spparo Voice Agent</h1>
+    </div>
+    <div class="subtitle">AI voice follow-up for Dubai real estate leads, built on AssemblyAI</div>
+  </header>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="status-row">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Idle, click Start Call to begin</span>
+      </div>
+      <div class="controls">
+        <button class="primary" id="startBtn">Start Call</button>
+        <button id="stopBtn" disabled>End Call</button>
+      </div>
+      <div id="transcript"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Lead Summary</h3>
+      <div class="field"><span class="label">Name</span><span class="value pending" id="f-name">-</span></div>
+      <div class="field"><span class="label">Budget (AED)</span><span class="value pending" id="f-budget">-</span></div>
+      <div class="field"><span class="label">Preferred area</span><span class="value pending" id="f-area">-</span></div>
+      <div class="field"><span class="label">Buy / Rent</span><span class="value pending" id="f-intent">-</span></div>
+      <div class="field"><span class="label">Timeline</span><span class="value pending" id="f-timeline">-</span></div>
+      <div id="statusBadge"></div>
+    </div>
+  </div>
+
+  <footer>Demo build: AssemblyAI Voice Agent Hackathon · Spparo</footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
