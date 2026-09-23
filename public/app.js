@@ -48,7 +48,9 @@ function applyFields(found) {
 // ---------- Deterministic fallback (used only when the LLM is down) ----------
 
 const SLOT_ORDER = ['name', 'intent', 'area', 'budget', 'timeline'];
-let lastAsked = 'name';
+// Field the agent's last question was about. Updated at the end of every
+// turn (LLM or fallback) so the fallback always knows what a reply answers.
+let awaitingSlot = 'name';
 const ASK = {
   name: "Sorry, I didn't catch your name. Could you tell me again?",
   intent: "Are you looking to buy or to rent?",
@@ -62,39 +64,56 @@ function capIfLatin(w) {
   return /^[a-z]/i.test(w) ? w.charAt(0).toUpperCase() + w.slice(1) : w;
 }
 
-function extractSlots(text) {
-  const found = {};
-  if (!lead.name) {
-    const m = text.match(/(?:my name is|i am|i'm|this is)\s+([a-z]+)/i) ||
-             text.match(/(?:मेरा नाम|नाम)\s+([^\s।,.!?]+)/);
-    if (m) found.name = capIfLatin(m[1]);
-    else if (lastAsked === 'name') { const c = text.trim().replace(/\.$/, ''); if (c) found.name = capIfLatin(c.split(/\s+/)[0]); }
-  }
-  if (!lead.intent) {
-    if (/\brent(?:ing)?\b/i.test(text) || /किराय/.test(text)) found.intent = 'Rent';
-    else if (/\b(buy|buying|purchase)\b/i.test(text) || /खरीद/.test(text)) found.intent = 'Buy';
-  }
-  if (!lead.area && lastAsked === 'area') {
-    const c = text.trim().replace(/\.$/, '');
-    if (c) found.area = c;
-  }
-  if (!lead.budget) {
-    const m = text.match(/(?:aed|\$)?\s?[\d,]+(?:\.\d+)?\s?(?:million|mn|m|k|thousand|lakh|crore)?/i);
-    if (m && /\d/.test(m[0])) found.budget = m[0].trim();
-  }
-  if (!lead.timeline && lastAsked === 'timeline') {
-    const c = text.trim().replace(/\.$/, '');
-    if (c) found.timeline = c;
-  }
-  return found;
+function nextMissingSlot() {
+  return SLOT_ORDER.find((k) => !lead[k]) || null;
 }
 
-// One deterministic turn: extract what we can, then ask the next missing
-// field (or close). Guarantees the call always moves forward.
+function detectIntent(text) {
+  if (/\brent(?:ing)?\b/i.test(text) || /किराय/.test(text)) return 'Rent';
+  if (/\b(buy|buying|purchase)\b/i.test(text) || /खरीद/.test(text)) return 'Buy';
+  return null;
+}
+
+function detectBudget(text) {
+  const m = text.match(/(?:aed|\$)?\s?\d[\d,]*(?:\.\d+)?\s?(?:million|mn|m|k|thousand|lakh|crore)?\b/i);
+  return m ? m[0].trim() : null;
+}
+
+// Stricter check for picking up a budget the lead volunteered unprompted:
+// needs a currency/unit or a 4+ digit number, so "3 bedroom" is not a budget.
+function detectVolunteeredBudget(text) {
+  const b = detectBudget(text);
+  return b && (/aed|\$|million|mn|m\b|k\b|thousand|lakh|crore/i.test(b) || /\d{4,}|\d{1,3},\d{3}/.test(b)) ? b : null;
+}
+
+function detectName(text) {
+  const m = text.match(/(?:my name is|i am|i'm|this is)\s+([a-z]+)/i) ||
+            text.match(/(?:मेरा नाम|नाम)\s+([^\s।,.!?]+)/);
+  return m ? capIfLatin(m[1]) : null;
+}
+
+// Best-effort value for `slot`, given that `text` is the answer to that slot's question.
+function interpretFor(slot, text) {
+  const raw = text.trim().replace(/[.!?।]+$/, '');
+  if (!raw) return null;
+  switch (slot) {
+    case 'name': return detectName(raw) || capIfLatin(raw.split(/\s+/)[0]);
+    case 'intent': return detectIntent(raw) || raw;
+    case 'budget': return detectBudget(raw) || raw;
+    default: return raw; // area, timeline
+  }
+}
+
+// One deterministic turn: fill the field we asked about, pick up any other
+// clearly-stated fields, then ask the next missing one (or close).
 function fallbackTurn(userText) {
-  applyFields(extractSlots(userText));
-  const missing = SLOT_ORDER.find((k) => !lead[k]);
-  lastAsked = missing;
+  const found = {};
+  if (awaitingSlot && !lead[awaitingSlot]) found[awaitingSlot] = interpretFor(awaitingSlot, userText);
+  if (!lead.name && !found.name) found.name = detectName(userText);
+  if (!lead.intent && !found.intent) found.intent = detectIntent(userText);
+  if (!lead.budget && !found.budget) found.budget = detectVolunteeredBudget(userText);
+  applyFields(found);
+  const missing = nextMissingSlot();
   if (missing) return { reply: ASK[missing], done: false };
   return { reply: CLOSING, done: true };
 }
@@ -143,6 +162,7 @@ async function advance(userText) {
     }
 
     history.push({ role: 'assistant', content: reply });
+    awaitingSlot = nextMissingSlot(); // keep fallback in sync whichever path handled the turn
     if (done) showFinalBadge();
     speak(reply, done ? endCall : resumeListening);
   } finally {
@@ -243,7 +263,7 @@ async function startCall() {
     statusText.textContent = 'Call live, listening';
     stopBtn.disabled = false;
     Object.keys(lead).forEach((k) => (lead[k] = null));
-    lastAsked = 'name';
+    awaitingSlot = 'name';
     history = [{ role: 'assistant', content: GREETING }];
     Object.values(fields).forEach((el) => {
       el.textContent = '-';
