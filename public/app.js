@@ -232,33 +232,51 @@ function resumeListening() {
 
 // ---------- Audio capture + AssemblyAI streaming ----------
 
+// Mobile browsers only allow the first speechSynthesis utterance inside a user
+// gesture, so play a silent one synchronously from the click handler.
+function unlockTTS() {
+  if (!window.speechSynthesis) return;
+  const unlock = new SpeechSynthesisUtterance(' ');
+  unlock.volume = 0;
+  window.speechSynthesis.speak(unlock);
+}
+
 async function startCall() {
+  unlockTTS();
   startBtn.disabled = true;
   statusText.textContent = 'Connecting...';
+
+  // Use the device's native rate: mobile browsers reject a forced 16 kHz context.
+  // Created inside the click gesture so it isn't left suspended on mobile.
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  audioContext.resume();
+  const rate = audioContext.sampleRate;
 
   const tokenRes = await fetch('/api/token');
   const tokenData = await tokenRes.json();
   if (!tokenRes.ok) {
     statusText.textContent = `Error: ${tokenData.error || 'could not get token'}`;
+    cleanupAudio();
+    startBtn.disabled = false;
+    return;
+  }
+
+  try {
+    await initMic();
+  } catch (err) {
+    console.error('Microphone access failed:', err);
+    statusText.textContent = 'Error: microphone access denied or unavailable';
+    cleanupAudio();
     startBtn.disabled = false;
     return;
   }
 
   socket = new WebSocket(
-    `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&speech_model=universal-3-5-pro&mode=balanced&token=${tokenData.token}`
+    `wss://streaming.assemblyai.com/v3/ws?sample_rate=${rate}&speech_model=universal-3-5-pro&mode=balanced&token=${tokenData.token}`
   );
   socket.binaryType = 'arraybuffer';
 
-  socket.onopen = async () => {
-    try {
-      await initMic();
-    } catch (err) {
-      console.error('Microphone access failed:', err);
-      statusText.textContent = 'Error: microphone access denied or unavailable';
-      socket.close();
-      startBtn.disabled = false;
-      return;
-    }
+  socket.onopen = () => {
     statusDot.classList.add('live');
     statusText.textContent = 'Call live, listening';
     stopBtn.disabled = false;
@@ -312,8 +330,8 @@ async function startCall() {
 }
 
 async function initMic() {
+  // audioContext is created in startCall (native sample rate) before this runs.
   mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   const source = audioContext.createMediaStreamSource(mediaStream);
   processor = audioContext.createScriptProcessor(4096, 1, 1);
 
@@ -355,8 +373,11 @@ function endCall() {
 
 function cleanupAudio() {
   if (processor) processor.disconnect();
-  if (audioContext) audioContext.close();
+  if (audioContext && audioContext.state !== 'closed') audioContext.close();
   if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+  processor = null;
+  audioContext = null;
+  mediaStream = null;
 }
 
 startBtn.addEventListener('click', startCall);
